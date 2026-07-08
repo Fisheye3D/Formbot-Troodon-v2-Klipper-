@@ -1,0 +1,34 @@
+
+
+[beacon]
+serial: /dev/serial/by-id/usb-Beacon_Beacon_RevD_92FA43BF4E4B333448202020FF0A210D-if00
+is_non_critical: True
+#   Setting this to True will allow the mcu to be disconnected and
+#   reconnected at will without errors. Helpful for USB-accelerometer boards
+#   and USB-probes
+x_offset: 0 # update with offset from nozzle on your machine
+y_offset: 21 # update with offset from nozzle on your machine
+mesh_main_direction: x
+mesh_runs: 2
+speed: 15
+lift_speed: 15
+contact_max_hotend_temperature: 180 # increase to probe at print temps
+home_xy_position: 175,175 # update for your machine
+home_z_hop: 5
+home_z_hop_speed: 30
+home_xy_move_speed: 300
+
+home_method: contact # use proximity for induction homing
+home_method_when_homed: proximity # after initial calibration use induction
+home_autocalibrate: unhomed # contact will calibrate beacon on first home
+
+[bed_mesh]
+speed: 400
+horizontal_move_z: 5
+mesh_min: 30, 30
+mesh_max: 320,320
+probe_count: 101,101
+mesh_pps: 2,2
+algorithm: bicubic
+zero_reference_position: 177.90, 175.00
+#relative_reference_index: 5101

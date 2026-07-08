@@ -18,9 +18,6 @@
 [include SET_RETRACT_DISTANCE.cfg]
 [include shaketune.cfg]
 #[include pis.cfg] Not needed with onboard adxl
-
-[save_variables]
-filename: ~/printer_data/config/variables.cfg
 [include knomi.cfg]
 
 [pause_resume]
@@ -63,11 +60,11 @@ timeout: 1800
 kinematics: limited_corexy
 max_velocity: 400  
 max_x_accel: 11000
-max_y_accel: 8000
+max_y_accel: 11000
 #   This sets the maximum acceleration (in mm/s^2) of movement along
 #   the y axis. It limits the acceleration of the y stepper motor. The
 #   default is to use max_accel for max_y_accel.           
-max_z_velocity: 35         
+max_z_velocity: 50         
 max_z_accel: 350
 max_accel: 15000
 square_corner_velocity: 5.0
@@ -87,41 +84,49 @@ canbus_uuid:fe5f6a3d3f7c #b01fa7ab9219
 ########################################
 
 [input_shaper]
-shaper_freq_x: 79.2
-shaper_type_x: ei
-shaper_freq_y: 52.2
+shaper_freq_x: 62.8
+shaper_type_x: mzv
+shaper_freq_y: 60.8
 shaper_type_y: mzv
 
-[adxl345 toolhead]
+[adxl345]
 cs_pin: EBBCan: PB12
 spi_software_sclk_pin: EBBCan: PB10
 spi_software_mosi_pin: EBBCan: PB11
 spi_software_miso_pin: EBBCan: PB2
 axes_map: z,-y,x
 
-[mcu btt_adxl345]2
-serial: /dev/serial/by-id/usb-Klipper_rp2040_5044506128E6821C-if00
-is_non_critical: True
-
-[adxl345 nozzle]
-cs_pin: btt_adxl345:gpio9
-spi_software_sclk_pin: btt_adxl345:gpio10
-spi_software_mosi_pin: btt_adxl345:gpio11
-spi_software_miso_pin: btt_adxl345:gpio8
-axes_map: -x,-y,-z
-
 [resonance_tester]
 probe_points: 175, 175, 20
-accel_per_hz: 125
-accel_chips: adxl345 toolhead #adxl345 nozzle
+accel_per_hz: 90
+accel_chip: adxl345
 sweeping_accel: 400
 sweeping_period: 1.2 #0 to disable 1.2 on
+
+
 
 [firmware_retraction] # make sure to enable this in slicer. cura printer settings addon is required to hit the check box. every other slicer should have it in settings tab. this allows live adjustments or ability to fix a mistake without canceling. 
 retract_length: 0.8
 retract_speed: 35
 unretract_extra_length: 0
 unretract_speed: 35
+
+
+##BTT NOZZLE ADXL
+
+#[mcu btt_adxl345]
+#serial: /dev/serial/by-id/usb-Klipper_rp2040_5044506128E6821C-if00
+#is_non_critical: True
+
+#[adxl345]
+#cs_pin: btt_adxl345:gpio9
+##spi_bus: spi1a
+#spi_software_sclk_pin: btt_adxl345:gpio10
+#spi_software_mosi_pin: btt_adxl345:gpio11
+#spi_software_miso_pin: btt_adxl345:gpio8
+#axes_map: -x,-y,-z
+
+
 
 ########################################
 # Extruder & Driver Settings
@@ -150,7 +155,7 @@ rtd_num_of_wires: 2
 min_temp: 10
 max_temp: 360
 max_power: 1.0
-min_extrude_temp: 170
+#min_extrude_temp: 170
 max_extrude_only_distance: 150
 #control: mpc
 heater_power: 65
@@ -309,7 +314,7 @@ second_homing_speed: 3
 [tmc2209 stepper_z]
 uart_pin: PE14
 interpolate: true
-run_current: 0.9
+run_current: 0.8
 hold_current: 0.5
 sense_resistor: 0.110
 stealthchop_threshold: 0
@@ -333,7 +338,7 @@ microsteps: 32
 [tmc2209 stepper_z1]
 uart_pin: PE9
 interpolate: true
-run_current: 0.9
+run_current: 0.8
 hold_current: 0.5
 sense_resistor: 0.110
 stealthchop_threshold: 0
@@ -357,7 +362,7 @@ microsteps: 32
 [tmc2209 stepper_z2]
 uart_pin: PG0
 interpolate: true
-run_current: 0.9
+run_current: 0.8
 hold_current: 0.5
 sense_resistor: 0.110
 stealthchop_threshold: 0
@@ -381,7 +386,7 @@ microsteps: 32
 [tmc2209 stepper_z3]
 uart_pin: PF11
 interpolate: true
-run_current: 0.9
+run_current: 0.8
 hold_current: 0.5
 sense_resistor: 0.110
 stealthchop_threshold: 0
@@ -466,12 +471,9 @@ gcode:
         3: "EXHAUST",     # Orca P3 → Exhaust
     } %}
     {% set p = params.P|int if 'P' in params else 0 %}
-    {% set speed = [(params.S|float / 255 if 'S' in params else 1.0), 1.0]|min %}
-    {% if p in fan_map %}
-        SET_FAN_SPEED FAN={fan_map[p]} SPEED={speed}
-    {% else %}
-        RESPOND PREFIX="warn" MSG="Unknown fan index P{p}"
-    {% endif %}
+    {% set fan = fan_map[p] if p in fan_map else "cpap" %}
+    {% set speed = (params.S|float / 255 if 'S' in params else 1.0) %}
+    SET_FAN_SPEED FAN={fan} SPEED={speed}
 
 
     
@@ -556,6 +558,7 @@ gcode:
 #####################################################################
 
 [temperature_sensor RPI]
+sensor_type: rpi_temperature # alternate def
 sensor_type: temperature_host
 min_temp: 10
 max_temp: 100
@@ -708,19 +711,19 @@ aliases:
 #*# [input_shaper]
 #*#
 #*# [beacon model default]
-#*# model_coef = 1.5476524115490096,
-#*# 	  1.870991029223116,
-#*# 	  0.7494218874907347,
-#*# 	  0.33783628023274825,
-#*# 	  0.24767697811845463,
-#*# 	  0.23049048933440874,
-#*# 	  -0.05220548110483622,
-#*# 	  -0.14710602945721232,
-#*# 	  0.10856168159535214,
-#*# 	  0.11050912975325669
-#*# model_domain = 3.2336669914070705e-07,3.3317955281652985e-07
+#*# model_coef = 1.5483927320456974,
+#*# 	  1.8743060379395153,
+#*# 	  0.7377984831368624,
+#*# 	  0.3285153592682445,
+#*# 	  0.3083509485195659,
+#*# 	  0.27539904581921526,
+#*# 	  -0.18717747862360132,
+#*# 	  -0.24159641160144682,
+#*# 	  0.19232216125421042,
+#*# 	  0.1652638951198457
+#*# model_domain = 3.237993660027113e-07,3.3323198249868585e-07
 #*# model_range = 0.200000,5.000000
-#*# model_temp = 27.852755
+#*# model_temp = 30.215059
 #*# model_offset = 0.00000
 #*#
 #*# [heater_bed]
@@ -738,6 +741,7 @@ aliases:
 #*# sensor_responsiveness = 0.0999958
 #*# ambient_transfer = 0.0907428
 #*# fan_ambient_transfer = 0.0907428, 0.108223, 0.118643, 0.121569, 0.127315, 0.132987, 0.137799, 0.139815, 0.145325, 0.147287, 0.146211
+#*# min_extrude_temp = 170.0
 #*#
 #*# [bed_mesh default]
 #*# version = 1

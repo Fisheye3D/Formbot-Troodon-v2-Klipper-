@@ -11,7 +11,7 @@ gcode:
 
     {% set verbose = params.VERBOSE|default(False) %}
 
-    {% if 'x' not in printer.toolhead.homed_axes or 'y' not in printer.toolhead.homed_axes or 'z' not in printer.toolhead.homed_axes %}
+    {% if not (('xy' in printer.toolhead.homed_axes) or ('z' in printer.toolhead.homed_axes)) %}
         {% if verbose %}
             { action_respond_info("Homing!") }
         {% endif %}
@@ -48,7 +48,6 @@ gcode:
 # Print Start/End and line purge
 #####################################################################
 
-
 [gcode_macro PRINT_START]
 description: Beacon Contact + Orca chamber temp + adaptive mesh + 15min wait + 5min soak + fixed expansion offset
 gcode:
@@ -75,8 +74,9 @@ gcode:
     M117 Starting chamber wait (target {target_chamber}C, max 15 min)...
     M106 S155
     SET_FAN_SPEED FAN=Nevermore SPEED=1
-    SET_GCODE_VARIABLE MACRO=__HEATSOAK_PARAMS VARIABLE=target_chamber VALUE={target_chamber}
-    SET_GCODE_VARIABLE MACRO=__HEATSOAK_PARAMS VARIABLE=checks_remaining VALUE=180
+    SET_GCODE_VARIABLE MACRO=__HEATSOAK_PARAMS VARIABLE=variable_target_chamber VALUE={target_chamber}
+    {% set deadline = (printer.system_stats.uptime + 900) | int %}
+    SET_GCODE_VARIABLE MACRO=__HEATSOAK_PARAMS VARIABLE=variable_deadline VALUE={deadline}
     UPDATE_DELAYED_GCODE ID=HEATSOAK_CHECK DURATION=5
     PAUSE
   {% else %}
@@ -88,170 +88,16 @@ gcode:
   M109 S150
   G4 P30000
 
-  M117 Wiping nozzle...
-  NOZZLE_CLEAN_NO_HOME
-
-  M117 Quad gantry leveling...
-  QUAD_GANTRY_LEVEL
-
-  M117 Re-homing Z after QGL (calibrate)...
-  G28 Z METHOD=CONTACT CALIBRATE=1
-
-  M117 Adaptive mesh (2 runs)...
-  BED_MESH_CALIBRATE PROFILE=adaptive_{MATERIAL} ADAPTIVE=1 RUNS=2
-  BED_MESH_PROFILE SAVE=adaptive_{MATERIAL}
-  SET_GCODE_VARIABLE MACRO=SET_MATERIAL VARIABLE=adaptive_mesh VALUE=True
-
-  M117 Wiping nozzle again...
-  NOZZLE_CLEAN_NO_HOME
-
-  M117 Final contact Z-home (no calibration)...
-  G28 Z METHOD=CONTACT CALIBRATE=0
-
-  M117 Moving to front for final heating...
-  G0 X5 Y0 Z10 F5000
-
-  M117 Heating nozzle to {target_extruder}C...
-  M109 S{target_extruder}
-
-  M117 Applying thermal expansion offset...
-  SET_GCODE_OFFSET Z=0.02
-  SET_GCODE_OFFSET Z_ADJUST={params.OFFSET|default(0)}
-
-  M117 Applying material-specific settings...
-  SET_MATERIAL MATERIAL={MATERIAL} NOZZLE={nozzle} OFFSET={params.OFFSET|default(0)}
-
-  M117 Setting retraction distance...
-  SET_RETRACT_DISTANCE MATERIAL_TYPE={MATERIAL}
-
-  LINE_PURGE2
-
-  M117 Printing...
-
-
-[gcode_macro PRINT_START2]
-description: Beacon Contact + Orca chamber temp + adaptive mesh + 15min wait + 5min soak + fixed expansion offset
-gcode:
-  {% set MATERIAL = params.MATERIAL|default('PLA')|string %}
-  {% set nozzle = params.NOZZLE|default(0.4)|float %}
-  {% set target_bed = params.BED|default(60)|float %}
-  {% set target_extruder = params.EXTRUDER|default(200)|float %}
-  {% set target_chamber = params.CHAMBER|default(0)|float %}
-
-  # Clear adaptive flag
-  SET_GCODE_VARIABLE MACRO=SET_MATERIAL VARIABLE=adaptive_mesh VALUE=False
-
-  BED_MESH_CLEAR
-  SET_GCODE_OFFSET Z=0
-
-  M117 Homing all axes...
-  G28
-  G0 Z5
-
-  M117 Heating bed to {target_bed}C...
-  M190 S{target_bed}
-
-  {% if target_bed > 90 and target_chamber > 0 %}
-    M117 Starting chamber wait (target {target_chamber}C, max 15 min)...
-    M106 S155
-    SET_FAN_SPEED FAN=Nevermore SPEED=1
-    SET_GCODE_VARIABLE MACRO=__HEATSOAK_PARAMS VARIABLE=target_chamber VALUE={target_chamber}
-    SET_GCODE_VARIABLE MACRO=__HEATSOAK_PARAMS VARIABLE=checks_remaining VALUE=180
-    UPDATE_DELAYED_GCODE ID=HEATSOAK_CHECK DURATION=5
-    PAUSE
-  {% else %}
-    M117 Short soak 2 min...
-    G4 p1000 #G4 P120000
-  {% endif %}
-
-  M117 Preheating nozzle to 150C for beacon probing...
-  M109 S150
-  G4 P30000
-
   M117 Beacon contact Z-home (calibrate)...
   G28 Z METHOD=CONTACT CALIBRATE=1
 
   M117 Quad gantry leveling...
   QUAD_GANTRY_LEVEL
 
-  M117 Re-homing Z after QGL...
-  G28 Z METHOD=CONTACT CALIBRATE=1
-
   M117 Adaptive mesh (2 runs)...
-  BED_MESH_CALIBRATE PROFILE=adaptive_{MATERIAL} ADAPTIVE=1 RUNS=2
-  BED_MESH_PROFILE SAVE=adaptive_{MATERIAL}
+  BED_MESH_CALIBRATE PROFILE=adaptive_{params.MATERIAL|default('PLA')} ADAPTIVE=1 RUNS=2
+  BED_MESH_PROFILE SAVE=adaptive_{params.MATERIAL|default('PLA')}
   SET_GCODE_VARIABLE MACRO=SET_MATERIAL VARIABLE=adaptive_mesh VALUE=True
-
-  M117 Final contact Z-home (no calibration)...
-  G28 Z METHOD=CONTACT CALIBRATE=0
-
-  M117 Moving to front for final heating...
-  G0 X5 Y0 Z10 F5000
-
-  M117 Heating nozzle to {target_extruder}C...
-  M109 S{target_extruder}
-
-  M117 Applying thermal expansion offset...
-  SET_GCODE_OFFSET Z=0.02
-  SET_GCODE_OFFSET Z_ADJUST={params.OFFSET|default(0)}
-
-  M117 Applying material-specific settings...
-  SET_MATERIAL MATERIAL={MATERIAL} NOZZLE={nozzle} OFFSET={params.OFFSET|default(0)}
-
-  M117 Setting retraction distance...
-  SET_RETRACT_DISTANCE MATERIAL_TYPE={MATERIAL}
-
-  LINE_PURGE2
-
-  M117 Printing...
-
-
-[gcode_macro PRINT_STARTTESTER]
-description: Same as PRINT_START, but skips the long chamber-sensor wait for a quicker start. Includes nozzle wipe.
-gcode:
-  {% set MATERIAL = params.MATERIAL|default('PLA')|string %}
-  {% set nozzle = params.NOZZLE|default(0.4)|float %}
-  {% set target_bed = params.BED|default(60)|float %}
-  {% set target_extruder = params.EXTRUDER|default(200)|float %}
-
-  # Clear adaptive flag
-  SET_GCODE_VARIABLE MACRO=SET_MATERIAL VARIABLE=adaptive_mesh VALUE=False
-
-  BED_MESH_CLEAR
-  SET_GCODE_OFFSET Z=0
-
-  M117 Homing all axes...
-  G28
-  G0 Z5
-
-  M117 Heating bed to {target_bed}C...
-  M190 S{target_bed}
-
-  M117 Quick soak 1 min...
-  G4 P60000
-
-  M117 Preheating nozzle to 150C for beacon probing...
-  M109 S150
-
-  M117 Wiping nozzle...
-  NOZZLE_CLEAN_NO_HOME
-
-  M117 Beacon contact Z-home (calibrate)...
-  G28 Z METHOD=CONTACT CALIBRATE=1
-
-  M117 Quad gantry leveling...
-  QUAD_GANTRY_LEVEL
-
-  M117 Re-homing Z after QGL...
-  G28 Z METHOD=CONTACT CALIBRATE=1
-
-  M117 Adaptive mesh (2 runs)...
-  BED_MESH_CALIBRATE PROFILE=adaptive_{MATERIAL} ADAPTIVE=1 RUNS=2
-  BED_MESH_PROFILE SAVE=adaptive_{MATERIAL}
-  SET_GCODE_VARIABLE MACRO=SET_MATERIAL VARIABLE=adaptive_mesh VALUE=True
-
-  M117 Wiping nozzle again...
-  NOZZLE_CLEAN_NO_HOME
 
   M117 Final contact Z-home (no calibration)...
   G28 Z METHOD=CONTACT CALIBRATE=0
@@ -267,75 +113,58 @@ gcode:
   SET_GCODE_OFFSET Z_ADJUST={params.OFFSET|default(0)}
 
   M117 Applying material-specific settings...
-  SET_MATERIAL MATERIAL={MATERIAL} NOZZLE={nozzle} OFFSET={params.OFFSET|default(0)}
-
-  M117 Setting retraction distance...
-  SET_RETRACT_DISTANCE MATERIAL_TYPE={MATERIAL}
-
-  LINE_PURGE2
-
-  M117 Printing...
-
-
-[gcode_macro PRINT_STARTTESTER2]
-description: Bare-bones Beacon start - homing, heat, contact-calibrated Z, QGL, mesh, purge. No SET_MATERIAL, no SET_RETRACT_DISTANCE.
-gcode:
-  {% set target_bed = params.BED|default(60)|float %}
-  {% set target_extruder = params.EXTRUDER|default(200)|float %}
-
-  # LINE_PURGE checks this flag but doesn't require SET_MATERIAL to run - reset it so purge
-  # always takes the plain (non-adaptive) branch instead of trusting a leftover value from
-  # a previous print.
-  SET_GCODE_VARIABLE MACRO=SET_MATERIAL VARIABLE=adaptive_mesh VALUE=False
-
-  BED_MESH_CLEAR
-  SET_GCODE_OFFSET Z=0
-
-  M117 Homing all axes...
-  G28
-  G0 Z2
-
-  M117 Heating bed to {target_bed}C...
-  M140 S{target_bed}
-  M104 S150
-  M190 S{target_bed}
-  G4 P60000
-
-  M117 Wiping nozzle...
-  NOZZLE_CLEAN_NO_HOME
-
-  M117 Beacon contact Z-home (calibrate)...
-  G28 Z METHOD=CONTACT CALIBRATE=1
-
-  M117 Quad gantry leveling...
-  QUAD_GANTRY_LEVEL
-
-  M117 Re-homing Z after QGL...
-  G28 Z METHOD=CONTACT CALIBRATE=1
-
-  M117 Bed mesh (2 runs)...
-  BED_MESH_CALIBRATE RUNS=2
-
-  M117 Wiping nozzle again...
-  NOZZLE_CLEAN_NO_HOME
-
-  M117 Final contact Z-home (no calibration)...
-  G28 Z METHOD=CONTACT CALIBRATE=0
-
-  M117 Moving to front for final heating...
-  G0 X5 Y0 Z10 F5000
-  M107
-
-  M117 Heating nozzle to {target_extruder}C...
-  M109 S{target_extruder}
-
-  M117 Applying thermal expansion offset...
-  SET_GCODE_OFFSET Z=0.06
-  SET_GCODE_OFFSET Z_ADJUST={params.OFFSET|default(0)}
+  SET_MATERIAL MATERIAL={params.MATERIAL|default('PLA')} OFFSET={params.OFFSET|default(0)}
 
   LINE_PURGE
 
   M117 Printing...
+    
+                   
+
+
+[gcode_macro PRINT_STARTTESTER]
+gcode:
+  {% set target_extruder = params.EXTRUDER|int %}
+  {% set target_bed = params.BED|int %}
+  {% set x_wait = printer.toolhead.axis_maximum.x|float / 2 %}
+  {% set y_wait = printer.toolhead.axis_maximum.y|float / 2 %}
+  {% set slicer_offset = params.Z_ADJUST|default(0)|float %}
+  {% set material_offset = printer["gcode_macro SET_MATERIAL"].z_offset|default(0)|float %}
+  {% set thermal_offset = 0.06 %}
+  {% set total_offset = slicer_offset + material_offset + thermal_offset %}
+
+ 
+  BED_MESH_CLEAR
+  SET_GCODE_OFFSET Z=0
+
+  G28                                     # Home all axes
+  G0 Z2                                   # Position beacon at 2mm for heat soak
+
+  M140 S{target_bed}                      # Start bed heater
+  M104 S150                               # Preheat nozzle to 150°C for probing
+  M190 S{target_bed}                      # Wait for bed temperature
+  G4 P60000                               # Optional: let temps settle
+
+  #WIPE_NOZZLE                            # Optional macro, define if available
+
+  G28 Z METHOD=CONTACT CALIBRATE=1        # Beacon: calibrate Z and model
+  G32                                     # Quad Gantry Level
+  BED_MESH_CALIBRATE RUNS=2               # Bed mesh scan mode
+
+  #WIPE_NOZZLE                            # Optional second wipe
+  G28 Z METHOD=CONTACT CALIBRATE=0        # Final beacon Z probe
+
+  SET_GCODE_OFFSET Z={total_offset}       # Final Z offset (material + thermal)
+
+  G0 X5 Y0 Z10 F5000                      # Go to purge start position
+  M107                                    # Turn off part cooling fan
+  M104 S{target_extruder}                 # Start heating to print temp
+  M109 S{target_extruder}                 # Wait for print temp
+
+  G0 X{x_wait - 50} Y4 F10000             # Move to purge start
+  G91                                     # Relative positioning
+  G1 X100 E40 F1000                       # Purge line
+  G90                                     # Absolute positioning
 
 
 #   Use PRINT_END for the slicer ending script - please customise for your slicer of choice
@@ -365,61 +194,12 @@ gcode:
 
 
 
-
-[gcode_macro LINE_PURGE2]
-description: Adaptive purge line near object
-gcode:
-    SAVE_GCODE_STATE NAME=LINE_PURGE_STATE
-
-    M117 Adaptive Purge...
-
-    {% set all_points = printer.exclude_object.objects | map(attribute='polygon') | sum(start=[]) %}
-
-    {% if all_points|length > 0 %}
-        {% set x_origin = all_points | map(attribute=0) | min %}
-        {% set y_origin = all_points | map(attribute=1) | min %}
-    {% else %}
-        {% set x_origin = 15 %}
-        {% set y_origin = 15 %}
-    {% endif %}
-
-    # Keep purge away from bed edges
-    {% set x_origin = [x_origin, 5] | max %}
-    {% set y_purge = [y_origin - 30, 5] | max %}
-
-    G92 E0
-    G90
-    M83
-
-    # Move to adaptive purge position
-    G1 X{x_origin} Y{y_purge} Z0.2 F6000
-
-    # Prime
-    G1 E3 F300
-
-    # Purge line
-    G1 X{x_origin + 60} E10 F1200
-
-    # Wipe
-    G1 X{x_origin + 70} F3000
-
-    # Retract
-    G1 E-0.3 F1800
-
-    G92 E0
-    M82
-
-    G0 Z2 F3000
-
-    RESTORE_GCODE_STATE NAME=LINE_PURGE_STATE
-
-
 [gcode_macro LINE_PURGE]
 variable_adaptive_enable: True
-variable_z_height: 0.2
-variable_purge_amount: 10
-variable_line_length: 60
-variable_flow_rate: 10
+variable_z_height: 0.3
+variable_purge_amount: 30
+variable_line_length: 40
+variable_flow_rate: 11.52
 variable_x_default: 15
 variable_y_default: 15
 variable_distance_to_object_y: 30
@@ -427,127 +207,142 @@ variable_x_margin: 5
 variable_y_margin: 5
 
 gcode:
-    {% if printer["gcode_macro SET_MATERIAL"].adaptive_mesh %}
+    {% if printer.set_material.adaptive_mesh %}
         M117 Adaptive Purge...
-
-        {% set all_points = printer.exclude_object.objects | map(attribute='polygon') | sum(start=[]) if 'exclude_object' in printer else [] %}
-
-        {% if all_points|length > 0 %}
-            {% set x_origin = all_points | map(attribute=0) | min %}
-            {% set y_origin = all_points | map(attribute=1) | min %}
-        {% else %}
-            {% set x_origin = x_default %}
-            {% set y_origin = y_default %}
-        {% endif %}
-
-        {% set x_origin = [x_origin, x_margin] | max %}
-        {% set y_purge = [y_origin - distance_to_object_y, y_margin] | max %}
-
+        {% set all_points = printer.exclude_object.objects | map(attribute='polygon') | sum(start=[]) %}
+        {% set x_origin = (all_points | map(attribute=0) | min | default(x_default)) %}
+        {% set y_origin = (all_points | map(attribute=1) | min | default(y_default)) %}
+        {% set x_origin = ([x_origin, x_margin] | max) %}
+        {% set y_purge = ([y_origin - distance_to_object_y, y_margin] | max) %}
+        
         {% set nozzle_dia = printer.configfile.config.extruder.nozzle_diameter | float %}
-        {% set purge_width = nozzle_dia * 1.5 %}
-        {% set cross_section = purge_width * z_height %}
-        {% set purge_speed = (cross_section * flow_rate * 60) | int %}
-        {% set travel_speed = (printer.toolhead.max_velocity * 60) | int %}
-
-        SAVE_GCODE_STATE NAME=LINE_PURGE_STATE
+        {% set cross_section = nozzle_dia * z_height | float %}
+        {% set purge_move_speed = (cross_section * flow_rate) * 60 | float %}
+        {% set travel_speed = (printer.toolhead.max_velocity | default(150)) * 60 | float %}
 
         G92 E0
-        G90
-        M83
-
         G0 F{travel_speed}
+        G90
         G0 X{x_origin} Y{y_purge} Z{z_height}
-
-        G1 X{x_origin + line_length} E{purge_amount} F{purge_speed}
-
-        # wipe forward slightly without extrusion
-        G1 X{x_origin + line_length + 5} F3000
-
-        # retract
+        M83
+        G1 X{x_origin + line_length} E{purge_amount} F{purge_move_speed}
         G1 E-0.2 F2100
-
         G92 E0
         M82
-
-        G0 Z{z_height + 2} F3000
-
-        RESTORE_GCODE_STATE NAME=LINE_PURGE_STATE
-
+        G0 Z{z_height * 2} F{travel_speed}
     {% else %}
         M117 Purging...
-
-        SAVE_GCODE_STATE NAME=LINE_PURGE_STATE
-
-        G90
-        M83
         G92 E0
-
-        G0 X5 Y5 Z{z_height} F3000
-
-        G1 E3 F300
-        G1 X150 E8 F1200
-
+        G1 X5 Y5 Z0.3 F3000
+        G1 E5 F200
+        G1 X150 E15 F1500
         G92 E0
-        M82
-
-        RESTORE_GCODE_STATE NAME=LINE_PURGE_STATE
-
         M117 Printing...
     {% endif %}
 
+########################################################
+# M109 / M190 wrappers (use TEMPERATURE_WAIT)
+########################################################
 
+[gcode_macro M109]
+rename_existing: M99109
+gcode:
+    # Parameters
+    {% set s = params.S|float %}
+    M104 {% for p in params %}{'%s%s' % (p, params[p])}{% endfor %}  ; Set hotend temp
+    {% if s != 0 %}
+        TEMPERATURE_WAIT SENSOR=extruder MINIMUM={s} MAXIMUM={s+1} ; Wait for hotend temp (within 1 degree)
+    {% endif %}
 
+[gcode_macro M190]
+rename_existing: M99190
+gcode:
+    # Parameters
+    {% set s = params.S|float %}
+    M140 {% for p in params %}{'%s%s' % (p, params[p])}{% endfor %}  ; Set bed temp
+    {% if s != 0 %}
+        TEMPERATURE_WAIT SENSOR=heater_bed MINIMUM={s} MAXIMUM={s+1} ; Wait for bed temp (within 1 degree)
+    {% endif %}
 
+#############################################################
+## Set Material-specific Configs
+#############################################################
 
-#[gcode_macro LINE_PURGE]
-#variable_adaptive_enable: True
-#variable_z_height: 0.2
-#variable_purge_amount: 15
-#variable_line_length: 40
-#variable_flow_rate: 10
-#variable_x_default: 15
-#variable_y_default: 15
-#variable_distance_to_object_y: 30
-#variable_x_margin: 5
-#variable_y_margin: 5
+## Add this immediately after your start_print line of the start gcode in Prusa/SuperSlicer:
+##     SET_MATERIAL MATERIAL='{filament_type[initial_extruder]}'
+## 
+## Add this immediately after your start_print line of the start gcode in Cura:
+##     SET_MATERIAL MATERIAL='{material_type}'
+## 
+[gcode_macro SET_MATERIAL]
+description: Set values based on material type (with MPC properties)
+variable_material: ''
+variable_adaptive_mesh: False
+gcode:
+    {% set MATERIAL = params.MATERIAL|default('PLA')|string %}
+    {% set OFFSET = params.OFFSET|default(0)|float %}
+    {% set nozzle = params.NOZZLE|default(0.4)|float %}
+    # store selected material (keeps your original behavior)
+    SET_GCODE_VARIABLE MACRO=SET_MATERIAL VARIABLE=material VALUE='"{MATERIAL}"'
 
-#gcode:
-    #{% if printer["gcode_macro SET_MATERIAL"].adaptive_mesh %}
-        #M117 Adaptive Purge...
-        #{% set all_points = printer.exclude_object.objects | map(attribute='polygon') | sum(start=[]) if 'exclude_object' in printer else [] %}
-        #{% set x_origin = (all_points | map(attribute=0) | min | default(x_default)) %}
-        #{% set y_origin = (all_points | map(attribute=1) | min | default(y_default)) %}
-        #{% set x_origin = ([x_origin, x_margin] | max) %}
-        #{% set y_purge = ([y_origin - distance_to_object_y, y_margin] | max) %}
-        
-        #{% set nozzle_dia = printer.configfile.config.extruder.nozzle_diameter | float %}
-        #{% set purge_width = nozzle_dia * 1.5 %}
-        #{% set cross_section = purge_width * z_height %}
-        #{% set purge_move_speed = (cross_section * flow_rate) * 60 | float %}
-        #{% set travel_speed = (printer.toolhead.max_velocity | default(150)) * 60 | float %}
+    ## Filament density & heat capacity table (g/cm³ , J/g/K)
+    {% set filament_table = {
+        "PLA":    (1.25, 2.20),
+        "PETG":   (1.27, 2.20),
+        "ABS":    (1.06, 2.40),
+        "ASA":    (1.07, 2.10),
+        "PC":     (1.20, 1.90),
+        "TPU":    (1.21, 2.00),
+        "PLA-CF": (1.29, 2.20)
+    } %}
+    {% set props = filament_table.get(MATERIAL, (1.25, 2.20)) %}
+    {% set density = props[0] %}
+    {% set heat_capacity = props[1] %}
 
-        #G92 E0
-        #G0 F{travel_speed}
-        #G90
-        #G0 X{x_origin} Y{y_purge} Z{z_height}
-        #M83
-        #G1 X{x_origin + line_length} E{purge_amount} F{purge_move_speed}
-        #G1 X{x_origin + line_length + 5} F300
-        #G1 E-0.2 F2100
-        #G92 E0
-        #M82
-        #G0 Z{z_height * 2} F{travel_speed}
-    #{% else %}
-        #M117 Purging...
-        #G92 E0
-        #G1 X5 Y5 Z0.2 F3000
-        #M83
-        #G1 E3 F300
-        #G1 X150 E8 F1200
-        #G92 E0
-        #M82
-        #M117 Printing...
-    #{% endif %}
+    M117 Material: {MATERIAL} | density={density} g/cm3 | Cp={heat_capacity} J/g/K
+
+    ## Load saved mesh only if adaptive mesh was NOT run this session
+    {% if not printer.set_material.adaptive_mesh %}
+        {% if MATERIAL == 'PLA' %}
+            BED_MESH_PROFILE LOAD="default"
+        {% elif MATERIAL in ['ABS','ASA'] %}
+            BED_MESH_PROFILE LOAD="abs"
+        {% elif MATERIAL == 'PETG' %}
+            BED_MESH_PROFILE LOAD="petg"
+        {% else %}
+            BED_MESH_PROFILE LOAD="default"
+        {% endif %}
+    {% endif %}
+
+    ## Material-specific print settings (unchanged behavior)
+    {% if MATERIAL == 'PLA' %}
+        SET_PRESSURE_ADVANCE ADVANCE=0.028 SMOOTH_TIME=0.050
+        SET_GCODE_OFFSET Z_ADJUST=0
+        SET_FAN_SPEED FAN=nevermore SPEED=0
+
+    {% elif MATERIAL in ['ABS','ASA'] %}
+        SET_PRESSURE_ADVANCE ADVANCE=0.035 SMOOTH_TIME=0.050
+        SET_GCODE_OFFSET Z_ADJUST=0
+        SET_FAN_SPEED FAN=nevermore SPEED=1.0
+
+    {% elif MATERIAL == 'PETG' %}
+        SET_PRESSURE_ADVANCE ADVANCE=0.039 SMOOTH_TIME=0.050
+        SET_GCODE_OFFSET Z_ADJUST=0.055
+        SET_FAN_SPEED FAN=nevermore SPEED=0.5
+
+    {% else %}
+        SET_PRESSURE_ADVANCE ADVANCE=0.035 SMOOTH_TIME=0.050
+        SET_GCODE_OFFSET Z_ADJUST=0
+        SET_FAN_SPEED FAN=nevermore SPEED=0
+    {% endif %}
+
+    ## Tell Kalico MPC the filament properties for this session
+    ## (session-only; use MPC_CALIBRATE / SAVE_CONFIG to persist)
+    MPC_SET HEATER=extruder FILAMENT_DENSITY={density} FILAMENT_HEAT_CAPACITY={heat_capacity}
+
+    ## Optional: expose values as macro variables for other macros to read
+    SET_GCODE_VARIABLE MACRO=SET_MATERIAL VARIABLE=density VALUE={density}
+    SET_GCODE_VARIABLE MACRO=SET_MATERIAL VARIABLE=heat_capacity VALUE={heat_capacity}
 
 #############################################################
 # HEATSOAK
@@ -557,15 +352,15 @@ gcode:
 [gcode_macro __HEATSOAK_PARAMS]
 description: Storage for chamber heatsoak parameters
 variable_target_chamber: 0.0
-variable_checks_remaining: 0
+variable_deadline: 0.0
 gcode:
   ; This macro is only used to hold variables
 
 [delayed_gcode HEATSOAK_CHECK]
 initial_duration: 0.           # will be started/updated from PRINT_START
 gcode:
-  {% set target = printer['gcode_macro __HEATSOAK_PARAMS'].target_chamber|float %}
-  {% set checks_remaining = printer['gcode_macro __HEATSOAK_PARAMS'].checks_remaining|int %}
+  {% set target = printer['gcode_macro __HEATSOAK_PARAMS'].variable_target_chamber|float %}
+  {% set deadline = printer['gcode_macro __HEATSOAK_PARAMS'].variable_deadline|float %}
   {% set cur = printer['temperature_sensor chamber'].temperature %}
   {% if cur is none %}
     RESPOND TYPE=error MSG="HEATSOAK: chamber sensor not found!"
@@ -576,14 +371,13 @@ gcode:
       G4 P300000            ; 5 minute soak
       UPDATE_DELAYED_GCODE ID=HEATSOAK_CHECK DURATION=0
       RESUME
-    {% elif checks_remaining <= 0 %}
+    {% elif printer.system_stats.uptime >= deadline %}
       M117 Chamber timeout — proceeding with 5 min soak...
       G4 P300000            ; 5 minute soak after timeout
       UPDATE_DELAYED_GCODE ID=HEATSOAK_CHECK DURATION=0
       RESUME
     {% else %}
       ; Not reached yet — check again in 5 seconds
-      SET_GCODE_VARIABLE MACRO=__HEATSOAK_PARAMS VARIABLE=checks_remaining VALUE={checks_remaining - 1}
       UPDATE_DELAYED_GCODE ID=HEATSOAK_CHECK DURATION=5
     {% endif %}
   {% endif %}
@@ -661,17 +455,19 @@ gcode:
 [gcode_macro G29]
 gcode:
   _CG28
-  BED_MESH_CALIBRATE {rawparams}
-
+  BED_MESH_CALIBRATE
+ 
 
 [gcode_macro BED_MESH_CALIBRATE]
 rename_existing: BED_MESH_CALIBRATE_BASE
-variable_probing: False
+variable_probing:False
 gcode:
-  _CG28
-  SET_GCODE_VARIABLE MACRO=BED_MESH_CALIBRATE VARIABLE=probing VALUE=True
-  BED_MESH_CALIBRATE_BASE {rawparams}
-  SET_GCODE_VARIABLE MACRO=BED_MESH_CALIBRATE VARIABLE=probing VALUE=False
+ _CG28
+ SET_GCODE_VARIABLE MACRO=BED_MESH_CALIBRATE VARIABLE=probing VALUE=True
+ BED_MESH_CALIBRATE_BASE
+ SET_GCODE_VARIABLE MACRO=BED_MESH_CALIBRATE VARIABLE=probing VALUE=False
+
+
 
 
 ####################RESONANCE TEST############################
@@ -749,7 +545,9 @@ gcode:
   {% endif %}
   SET_IDLE_TIMEOUT TIMEOUT={printer.configfile.settings.idle_timeout.timeout} ; set timeout back to configured value
   CLEAR_PAUSE
+  SDCARD_RESET_FILE
   PRINT_END
+  BASE_CANCEL_PRINT
   TURN_OFF_HEATERS
   CANCEL_PRINT_BASE
 
@@ -849,26 +647,28 @@ gcode:
         BASE_RESUME                                                                  ; resume print
     {% endif %}
 
-[gcode_macro M109]
-rename_existing: M99109
-gcode:
-  M99109 {rawparams}
-
-[gcode_macro M190]
-rename_existing: M99190
-gcode:
-  M99190 {rawparams}
-
-
 [gcode_macro G28]
 description: G28 homing
 rename_existing: G0028
-variable_homing: False
+variable_homing:False
+
 gcode:
-  SET_GCODE_VARIABLE MACRO=G28 VARIABLE=homing VALUE=True
-  RESPOND MSG="Homing"
-  G0028 {rawparams}
-  SET_GCODE_VARIABLE MACRO=G28 VARIABLE=homing VALUE=False
+ SET_GCODE_VARIABLE MACRO=G28 VARIABLE=homing VALUE=True
+    RESPOND MSG="Homing"
+    {% set home_all = 'X' not in params and 'Y' not in params and 'Z' not in params %} ; check if all axes are being homed
+    {% if home_all or 'X' in params %} ; if homing all axes or just x
+        G0028 X ; home X axis
+    {% endif %}
+    {% if home_all or 'Y' in params %} ; if homing all axes or just y
+        G0028 Y ; home Y axis
+    {% endif %}
+    {% if home_all or 'Z' in params %} ; if homing all axes or just z
+        G0028 Z ; home Z axis
+    {% endif %}
+ SET_GCODE_VARIABLE MACRO=G28 VARIABLE=homing VALUE=False
+
+
+
 
 
 #####################################################################
@@ -932,7 +732,7 @@ gcode:
   # Purge
   G0 E40 F100
   # Wait for purge to complete
-  M400
+  M400e
   M117 Filament loaded!
   RESPOND MSG="Filament loaded!"
   RESTORE_GCODE_STATE NAME=load_state
@@ -949,28 +749,29 @@ gcode:
   G28 Y
   G90
   G1 X270 Y353 F6000
-  G1 Z-0.4 F200
+  G1 Z0.3 F3000
   G1 X305 Y353 F10000
   G1 X270 Y353 F10000
   G1 X305 Y353 F10000
   G1 X270 Y353 F10000
   G1 X305 Y353 F10000
   G1 X270 Y353 F10000
-  G1 Z10 F2000
+  G1 Z10 F6000
+
 [gcode_macro NOZZLE_CLEAN_NO_HOME]
 #description: wipes nozzle on brush to clean it
 gcode:
   _CG28 
   G90
   G1 X270 Y353 F6000
-  G1 Z-0.4 F200
+  G1 Z0.3 F3000
   G1 X305 Y353 F10000
   G1 X270 Y353 F10000
   G1 X305 Y353 F10000
   G1 X270 Y353 F10000
   G1 X305 Y353 F10000
   G1 X270 Y353 F10000
-  G1 Z10 F2000
+  G1 Z10 F6000
 
 
 
@@ -1122,211 +923,3 @@ gcode:
 gcode:
  {action_call_remote_method("timelapse_render")}
 
-
-
-#####################################################################
-#  Suggested extras (merged in)
-#####################################################################
-
-#####################################################################
-# FILTER_AFTER_PRINT
-#
-# You already have a [delayed_gcode filter_off] in printer.cfg that
-# turns the Nevermore off - but nothing anywhere ever triggers it.
-# Right now it's dead code. This macro actually uses it: keeps the
-# Nevermore running after a print finishes (to clear VOCs/particulates
-# from ABS/ASA prints) and auto-shuts it off after MINUTES.
-# Call from PRINT_END if you want it to run automatically every print,
-# or just fire it manually after a print.
-#####################################################################
-[gcode_macro FILTER_AFTER_PRINT]
-description: Run the Nevermore for MINUTES after a print, then auto-shutoff. Default 10 min.
-gcode:
-  {% set minutes = params.MINUTES|default(10)|float %}
-  SET_FAN_SPEED FAN=Nevermore SPEED=1
-  UPDATE_DELAYED_GCODE ID=filter_off DURATION={minutes * 60}
-  RESPOND MSG="Nevermore running for {minutes} more minutes"
-
-
-#####################################################################
-# CALIBRATE_MPC_HOTEND
-#
-# Shortcut for Kalico's real MPC_CALIBRATE command (docs.kalico.gg/MPC.html).
-# Your [extruder] already runs control: mpc (confirmed via your SAVE_CONFIG
-# block), so this just saves typing the full command. TARGET defaults to
-# 200C per Kalico's own recommendation - MPC calibration is temperature-
-# independent, so a higher target doesn't give a better model.
-# Remember to run SAVE_CONFIG after - MPC_CALIBRATE doesn't save automatically.
-#####################################################################
-[gcode_macro CALIBRATE_MPC_HOTEND]
-description: Run Kalico MPC_CALIBRATE on the extruder. Usage: CALIBRATE_MPC_HOTEND [TARGET=200] [FAN_BREAKPOINTS=3]
-gcode:
-  {% set target = params.TARGET|default(200)|float %}
-  {% set breakpoints = params.FAN_BREAKPOINTS|default(3)|int %}
-  RESPOND MSG="Starting MPC calibration at {target}C - this takes a few minutes"
-  MPC_CALIBRATE HEATER=extruder TARGET={target} FAN_BREAKPOINTS={breakpoints}
-  RESPOND MSG="MPC calibration done - run SAVE_CONFIG to keep it"
-
-
-#####################################################################
-# TUNE_BED_PID
-#
-# Your heater_bed already runs real PID (control = pid via SAVE_CONFIG,
-# not MPC), so unlike the extruder it actually benefits from a normal
-# PID_CALIBRATE. Shortcut with a sensible default target.
-#####################################################################
-[gcode_macro TUNE_BED_PID]
-description: Run PID_CALIBRATE on heater_bed. Usage: TUNE_BED_PID [TARGET=90]
-gcode:
-  {% set target = params.TARGET|default(90)|float %}
-  RESPOND MSG="Starting bed PID tune at {target}C"
-  PID_CALIBRATE HEATER=heater_bed TARGET={target}
-  RESPOND MSG="Bed PID tune done - run SAVE_CONFIG to keep it"
-
-
-#####################################################################
-# DUMP_TMC_ALL
-#
-# Runs DUMP_TMC on every TMC2209 driver in one shot instead of typing
-# seven separate commands when troubleshooting skipped steps or stalls.
-# Output goes to the console/klippy.log.
-#####################################################################
-[gcode_macro DUMP_TMC_ALL]
-description: Dump TMC driver status for every stepper at once
-gcode:
-  DUMP_TMC STEPPER=extruder
-  DUMP_TMC STEPPER=stepper_x
-  DUMP_TMC STEPPER=stepper_y
-  DUMP_TMC STEPPER=stepper_z
-  DUMP_TMC STEPPER=stepper_z1
-  DUMP_TMC STEPPER=stepper_z2
-  DUMP_TMC STEPPER=stepper_z3
-
-
-#####################################################################
-# PARK_TOOLHEAD
-#
-# Quick manual park (center X, front Y, safe Z) for when you want the
-# toolhead out of the way without going through PAUSE (which also
-# disables the filament sensor, saves gcode state, drops the hotend
-# to 0, etc). Useful mid-tinkering at the console.
-#####################################################################
-[gcode_macro PARK_TOOLHEAD]
-description: Move to a safe park position without pausing
-gcode:
-  {% set z_min = 10 %}
-  SAVE_GCODE_STATE NAME=PARK_TOOLHEAD
-  G90
-  {% if 'z' not in printer.toolhead.homed_axes %}
-    RESPOND TYPE=error MSG="Can't park - not homed"
-  {% else %}
-    {% set safe_z = [printer.toolhead.position.z + 5, z_min]|max %}
-    G1 Z{safe_z} F900
-    G1 X{printer.toolhead.axis_maximum.x/2} Y{printer.toolhead.axis_minimum.y+5} F6000
-  {% endif %}
-  RESTORE_GCODE_STATE NAME=PARK_TOOLHEAD MOVE=0
-
-#####################################################################
-# LAYER-TRIGGERED SCHEDULING  (concept: jschuh/klipper-macros)
-#
-# Schedule a pause / print-speed change / fan-speed change to happen
-# at a specific layer, from the console, WHILE a print is already
-# running - not just baked into the file up front. Useful for e.g.
-# embedding a magnet/insert at a known layer without marring the
-# surface, or dropping fan speed partway through a tall ABS/ASA part.
-#
-# REQUIRES ONE-TIME SLICER SETUP: add this single line to Orca's
-# Printer Settings -> Custom G-code -> "Layer change G-code" box:
-#     _ON_LAYER_CHANGE LAYER={layer_num}
-# Without that line, these macros have nothing to trigger them.
-#####################################################################
-[gcode_macro _LAYER_TRIGGER_VARS]
-description: Storage for layer-triggered scheduling. Do not call directly.
-variable_pause_at_layer: -1
-variable_speed_at_layer: -1
-variable_speed_value: 100
-variable_fan_at_layer: -1
-variable_fan_value: 255
-gcode:
-  ; storage only
-
-[gcode_macro PAUSE_AT_LAYER]
-description: Pause at the next layer >= LAYER. Usage: PAUSE_AT_LAYER LAYER=10
-gcode:
-  {% set layer = params.LAYER|int %}
-  SET_GCODE_VARIABLE MACRO=_LAYER_TRIGGER_VARS VARIABLE=pause_at_layer VALUE={layer}
-  RESPOND MSG="Will pause at layer {layer}"
-
-[gcode_macro SPEED_AT_LAYER]
-description: Set print speed factor at the next layer >= LAYER. Usage: SPEED_AT_LAYER LAYER=10 SPEED=50
-gcode:
-  {% set layer = params.LAYER|int %}
-  {% set speed = params.SPEED|default(100)|int %}
-  SET_GCODE_VARIABLE MACRO=_LAYER_TRIGGER_VARS VARIABLE=speed_at_layer VALUE={layer}
-  SET_GCODE_VARIABLE MACRO=_LAYER_TRIGGER_VARS VARIABLE=speed_value VALUE={speed}
-  RESPOND MSG="Will set speed to {speed}% at layer {layer}"
-
-[gcode_macro FAN_AT_LAYER]
-description: Set part-cooling fan (0-255) at the next layer >= LAYER. Usage: FAN_AT_LAYER LAYER=20 SPEED=128
-gcode:
-  {% set layer = params.LAYER|int %}
-  {% set speed = params.SPEED|default(255)|int %}
-  SET_GCODE_VARIABLE MACRO=_LAYER_TRIGGER_VARS VARIABLE=fan_at_layer VALUE={layer}
-  SET_GCODE_VARIABLE MACRO=_LAYER_TRIGGER_VARS VARIABLE=fan_value VALUE={speed}
-  RESPOND MSG="Will set fan to {speed}/255 at layer {layer}"
-
-[gcode_macro _ON_LAYER_CHANGE]
-description: Called automatically by the slicer's layer-change gcode. Do not call directly.
-gcode:
-  {% set layer = params.LAYER|default(0)|int %}
-  {% set v = printer["gcode_macro _LAYER_TRIGGER_VARS"] %}
-  {% if v.pause_at_layer >= 0 and layer >= v.pause_at_layer %}
-    SET_GCODE_VARIABLE MACRO=_LAYER_TRIGGER_VARS VARIABLE=pause_at_layer VALUE=-1
-    PAUSE
-  {% endif %}
-  {% if v.speed_at_layer >= 0 and layer >= v.speed_at_layer %}
-    SET_GCODE_VARIABLE MACRO=_LAYER_TRIGGER_VARS VARIABLE=speed_at_layer VALUE=-1
-    M220 S{v.speed_value}
-  {% endif %}
-  {% if v.fan_at_layer >= 0 and layer >= v.fan_at_layer %}
-    SET_GCODE_VARIABLE MACRO=_LAYER_TRIGGER_VARS VARIABLE=fan_at_layer VALUE=-1
-    M106 S{v.fan_value}
-  {% endif %}
-
-
-#####################################################################
-# DUMP_VARIABLES / GET_VARIABLE   (concept: ellis3dp Print Tuning Guide)
-#
-# Debugging helpers. With as much custom macro state as this config
-# now tracks (SET_MATERIAL, SET_RETRACT_DISTANCE, the heatsoak system,
-# KNOMI status), these let you check current values from the console
-# without digging through logs.
-#####################################################################
-[gcode_macro DUMP_VARIABLES]
-description: Print all variables for a given macro. Usage: DUMP_VARIABLES MACRO=SET_MATERIAL [FILTER=<substring>]
-gcode:
-  {% set macro_name = params.MACRO|string %}
-  {% set filter = params.FILTER|default('')|string|lower %}
-  {% set svv = printer["gcode_macro " ~ macro_name] %}
-  {% if not svv %}
-    RESPOND TYPE=error MSG="No macro named '{macro_name}' found (or it has no variables)"
-  {% else %}
-    RESPOND MSG="--- {macro_name} variables ---"
-    {% for key in svv %}
-      {% if filter == '' or filter in key|lower %}
-        RESPOND MSG="{key} = {svv[key]}"
-      {% endif %}
-    {% endfor %}
-  {% endif %}
-
-[gcode_macro GET_VARIABLE]
-description: Print one variable from a macro. Usage: GET_VARIABLE MACRO=SET_MATERIAL VARIABLE=adaptive_mesh
-gcode:
-  {% set macro_name = params.MACRO|string %}
-  {% set var_name = params.VARIABLE|string %}
-  {% set svv = printer["gcode_macro " ~ macro_name] %}
-  {% if not svv or var_name not in svv %}
-    RESPOND TYPE=error MSG="No variable '{var_name}' on macro '{macro_name}'"
-  {% else %}
-    RESPOND MSG="{macro_name}.{var_name} = {svv[var_name]}"
-  {% endif %}

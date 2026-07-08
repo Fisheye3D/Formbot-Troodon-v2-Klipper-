@@ -2,9 +2,6 @@
 description: Set values based on material type and nozzle size (with MPC + PA table)
 variable_material: ''
 variable_adaptive_mesh: False
-variable_density: 0.0
-variable_heat_capacity: 0.0
-variable_pa: 0.0
 gcode:
     {% set MATERIAL = params.MATERIAL|default('PLA')|string %}
     {% set OFFSET = params.OFFSET|default(0)|float %}
@@ -18,7 +15,7 @@ gcode:
     # Pressure advance lookup: (material, nozzle) -> PA value
     ################################################################################
     {% set pa_table = {
-        "PLA":  {"0.4": 0.056, "0.6": 0.030, "0.8": 0.028},
+        "PLA":  {"0.4": 0.035, "0.6": 0.030, "0.8": 0.028},
         "PETG": {"0.4": 0.03525,"0.6": 0.031, "0.8": 0.029},
         "ABS":  {"0.4": 0.028,  "0.6": 0.025, "0.8": 0.023},
         "ASA":  {"0.4": 0.028,  "0.6": 0.025, "0.8": 0.023}
@@ -49,7 +46,7 @@ gcode:
     ################################################################################
     # Load saved mesh only if adaptive mesh wasn't run this session
     ################################################################################
-    {% if not printer["gcode_macro SET_MATERIAL"].adaptive_mesh %}
+    {% if not printer.set_material.adaptive_mesh %}
         {% if MATERIAL == 'PLA' %}
             BED_MESH_PROFILE LOAD="default"
         {% elif MATERIAL in ['ABS','ASA'] %}
@@ -66,19 +63,19 @@ gcode:
     ################################################################################
     {% if MATERIAL == 'PLA' %}
         SET_GCODE_OFFSET Z_ADJUST=0
-        SET_FAN_SPEED FAN=Nevermore SPEED=0
+        SET_FAN_SPEED FAN=nevermore SPEED=0
 
     {% elif MATERIAL in ['ABS','ASA'] %}
         SET_GCODE_OFFSET Z_ADJUST=0
-        SET_FAN_SPEED FAN=Nevermore SPEED=1.0
+        SET_FAN_SPEED FAN=nevermore SPEED=1.0
 
     {% elif MATERIAL == 'PETG' %}
         SET_GCODE_OFFSET Z_ADJUST=0.055
-        SET_FAN_SPEED FAN=Nevermore SPEED=0.5
+        SET_FAN_SPEED FAN=nevermore SPEED=0.5
 
     {% else %}
         SET_GCODE_OFFSET Z_ADJUST=0
-        SET_FAN_SPEED FAN=Nevermore SPEED=0
+        SET_FAN_SPEED FAN=nevermore SPEED=0
     {% endif %}
 
     ################################################################################
